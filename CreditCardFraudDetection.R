@@ -279,6 +279,8 @@ ggplot(fr,aes(x=Current.Age,y=sm,fill=Use.Chip))+geom_line(alpha=0.9,stat='ident
 ###################################################################################################################
 
 
+
+
 ##### generate flag of is.Fraud #####
 
 transactions_data <- transactions_data[,!(names(transactions_data) %in% c("Day","Time","Amount","Merchant.Name","Zip","Merchant.City","Errors."))]
@@ -353,9 +355,11 @@ transactions_data_model %>% group_by(Fraud) %>% tally()
 
 library(ROSE)
 
-train_model_under_samp <- ovun.sample(Fraud~.,data=train_model,p=0.5, 
+train_model_under_samp <- ovun.sample(Fraud~.,data=train_model,p=0.3, 
                                       seed=123, N=nrow(train_model),method="both")$data
 
+train_model_under_samp <- ovun.sample(Fraud~.,data=train_model,p=0.4, 
+                                      seed=123,method="under")$data
 
 
 train_model_under_samp %>% group_by(Fraud) %>% tally()
@@ -375,8 +379,21 @@ rm(train_model)
 
 ####### LOGISTIC REGRESSION ###############
 
+
+
 library(caTools)
 
+
+
+
+#### WITHOUT SAMPLING##################
+
+logistic_model <- glm(Fraud ~ ., 
+                      data = train_model, 
+                      family = "binomial")
+
+
+#### with sAMPLING ###############
 logistic_model <- glm(Fraud ~ ., 
                       data = train_model_under_samp, 
                       family = "binomial")
@@ -389,16 +406,15 @@ predict_reg <- predict(logistic_model,
 #predict_reg 
 
 # Changing probabilities
-predict_reg <- ifelse(predict_reg >0.8, 1, 0)
+predict_reg <- ifelse(predict_reg >0.5, 1, 0)
 table(test_model$Fraud, predict_reg)
 
 ##### accuracy 
 library(Metrics)
 accuracy(test_model$Fraud, predict_reg)
-
-precision(test_model$Fraud, predict_reg)
-
-
+Precision(test_model$Fraud, predict_reg, positive = 1)
+Recall(test_model$Fraud, predict_reg, positive = 1)
+F1_Score(test_model$Fraud, predict_reg, positive = 1)
 ??Metrics
 
 
@@ -413,6 +429,19 @@ classifier = svm(formula = Fraud ~ .,
 ################## RFR ####################
 library(ranger)
 
+####### wiTHOUT Sampling##################
+
+fit <- ranger(Fraud ~ ., 
+              data = train_model, 
+              num.trees = 50,
+              max.depth = 8,
+              classification = TRUE)
+
+
+
+
+
+####### with sampling ###################
 
 fit <- ranger(Fraud ~ ., 
               data = train_model_under_samp, 
@@ -430,3 +459,66 @@ accuracy(test_model$Fraud, rfr_predict$predictions)
 
 precision(test_model$Fraud, rfr_predict$predictions)
 
+
+####### XG Boosst #########################
+
+library(xgboost)
+
+## without undersampling 
+bstSparse <- xgboost(data = as.matrix(train_model[-2]), label = train_model$Fraud, max.depth = 8, eta = 1, nthread = 2, nrounds = 2, objective = "binary:logistic")
+xgboost_predict = predict(bstSparse,as.matrix(test_model[-2]), type = "response")
+
+predict_xg <- ifelse(xgboost_predict>0.5, 1, 0)
+table(train_model$Fraud, predict_xg)
+table(test_model$Fraud, predict_xg)
+
+accuracy(test_model$Fraud,predict_xg)
+precision(test_model$Fraud, predict_xg)
+recall(test_model$Fraud, predict_xg)
+
+## with undersampling #####
+bstSparse <- xgboost(data = as.matrix(train_model_under_samp[-2]), label = train_model_under_samp$Fraud, max.depth = 8, eta = 1, nthread = 2, nrounds = 30, objective = "binary:logistic")
+xgboost_predict = predict(bstSparse,as.matrix(test_model[-2]), type = "response")
+
+predict_xg_under <- ifelse(xgboost_predict>0.5, 1, 0)
+table(train_model$Fraud, predict_xg_under)
+table(test_model$Fraud, predict_xg_under)
+
+accuracy(test_model$Fraud,predict_xg_under)
+precision(test_model$Fraud, predict_xg_under)
+recall(test_model$Fraud, predict_xg_under)
+F1_Score(test_model$Fraud, predict_xg, positive = NULL)
+
+### When precision is 50% (no sampling) then recall 0.5%
+### When precision sucks (under sampling) then recall is at 50%
+### Precision is for customer satisfaction, Recall is for how good is fraud detection
+library(MLmetrics)
+
+recall(test_model$Fraud, predict_xg)
+
+
+################################# NAIVE BAIYES ###########################################
+library(e1071)
+library(caTools)
+library(caret)
+
+### without sampling #####
+classifier_naive <- naiveBayes(Fraud ~ ., data = train_model)
+predict_naive_unsamp <- predict(classifier_naive, newdata = test_model)
+accuracy(test_model$Fraud,predict_naive_unsamp)
+precision(as.factor(test_model$Fraud), predict_naive_unsamp)
+recall(as.factor(test_model$Fraud), predict_naive_unsamp)
+table(as.factor(test_model$Fraud), predict_naive_unsamp)
+
+
+
+### with sampling #####
+classifier_naive <- naiveBayes(Fraud ~ ., data = train_model_under_samp)
+predict_naive <- predict(classifier_naive, newdata = test_model)
+accuracy(test_model$Fraud,predict_naive)
+precision(factor(test_model$Fraud), predict_naive)
+recall(factor(test_model$Fraud), predict_naive)
+table(test_model$Fraud, predict_naive)
+
+
+sum(predict_naive == predict_naive_unsamp)/length(predict_naive_unsamp)
