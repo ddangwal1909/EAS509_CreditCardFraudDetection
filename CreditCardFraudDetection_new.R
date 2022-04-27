@@ -65,16 +65,16 @@ transactions_data %>% group_by(Is.Fraud.) %>% tally()
 
 ## backup of transactions_data
 transactions_bkp <- transactions_data
-
-
+##transaction_data <- transactions_bkp
+colnames(transactions_bkp)
 ### treating outliers
-Q <- quantile(transactions_data$Amountnew, probs=c(.25, .75), na.rm = FALSE)
-iqr = IQR(transactions_data$Amountnew)
-Amount_lower = Q[1]-(1.5*iqr)
-Amount_upper = Q[2]+(1.5*iqr)
-transactions_data = filter(transactions_data,Amountnew>=Amount_lower & Amountnew<=Amount_upper)
+#Q <- quantile(transactions_data$Amountnew, probs=c(.25, .75), na.rm = FALSE)
+#iqr = IQR(transactions_data$Amountnew)
+#Amount_lower = Q[1]-(1.5*iqr)
+#Amount_upper = Q[2]+(1.5*iqr)
+#transactions_data = filter(transactions_data,Amountnew>=Amount_lower & Amountnew<=Amount_upper)
 
-transactions_data %>% group_by(Is.Fraud.) %>% tally()
+#transactions_data %>% group_by(Is.Fraud.) %>% tally()
 
 
 
@@ -104,7 +104,10 @@ transactions_data = transactions_data %>%
   mutate(dummy_col_velocity=1) %>%
   mutate(num_transactions = cumsum(dummy_col_velocity),
          lag_merchant = dplyr::lag(MCC, n = 1, default = 0),
-         same_merchant_transact = ifelse(lag_merchant==MCC,1,0)
+         same_merchant_transact = ifelse(lag_merchant==MCC,1,0),
+         lag_amountnew_user_level = dplyr::lag(Amountnew, n = 1, default = 0),
+         running_avg_user_day = cumsum(lag_amountnew_user_level)/num_transactions,
+         above_moving_avg_user_flag = ifelse(Amountnew > running_avg_user_day, 1, 0)
          )
   
 
@@ -117,10 +120,12 @@ transactions_data = filter(transactions_data,change_prev!=Inf)
 transactions_data_frauds = filter(transactions_data,Is.Fraud.=='Yes')
 transactions_data_nofrauds = filter(transactions_data,Is.Fraud.=='No')
 
+
+View(transactions_data_frauds)
 summary(transactions_data_frauds)
 summary(transactions_data_nofrauds)
 
-
+transactions_data_nofrauds %>% group_by(above_moving_avg_user_flag) %>% tally()
 
 
 
@@ -412,7 +417,7 @@ transactions_data$age_risky[transactions_data$Current.Age>=40 & transactions_dat
 
 ### remove columns not needed 
 transactions_data_model <- transactions_data[,!(names(transactions_data) %in% c("User","Card","Month","Use.Chip","Merchant.State","MCC","Is.Fraud.","Current.Age","Yearly.Income...Person","State_Fullname"
-                    ,"avg_nofraud","Amountnew","dummy_col","lag_amountnew","max_trans_amt_until_now","min_trans_amt_until_now","user_trans_num","running_avg"))]
+                    ,"avg_nofraud","Amountnew","dummy_col","lag_amountnew","max_trans_amt_until_now","min_trans_amt_until_now","user_trans_num","running_avg","lag_merchant","dummy_col_velocity","num_transactions","running_avg_user_day","lag_amountnew_user_level"))]
 colnames(transactions_data_model)
 
 
@@ -599,14 +604,14 @@ precision(test_model$Fraud, predict_xg)
 recall(test_model$Fraud, predict_xg)
 
 ## with undersampling #####
-colnames(train_model_under_samp)[6]
-bstSparse <- xgboost(data = as.matrix(train_model_under_samp[-6]), label = train_model_under_samp$Fraud, max.depth = 10, eta = 1, nthread = 2, nrounds = 25, objective = "binary:logistic")
-xgboost_predict = predict(bstSparse,as.matrix(test_model[-6]), type = "response")
+colnames(train_model_under_samp)[8]
+bstSparse <- xgboost(data = as.matrix(train_model_under_samp[-8]), label = train_model_under_samp$Fraud, max.depth = 10, eta = 1, nthread = 2, nrounds = 25, objective = "binary:logistic")
+
+xgboost_predict = predict(bstSparse,as.matrix(test_model[-8]), type = "response")
 
 predict_xg_under <- ifelse(xgboost_predict>0.8, 1, 0)
 #table(train_model$Fraud, predict_xg_under)
 table(Actual = test_model$Fraud, predicted = predict_xg_under)
-
 accuracy(test_model$Fraud,predict_xg_under)
 precision(test_model$Fraud, predict_xg_under)
 recall(test_model$Fraud, predict_xg_under)
@@ -654,8 +659,48 @@ sum(predict_naive == predict_naive_unsamp)/length(predict_naive_unsamp)
 
 
 
+########################## LIGHT GBM ###########################################
 
-train_model_under_samp
+library(lightgbm)
+
+
+X_train <- train_model_under_samp %>%
+  select(-Fraud)
+
+Y_train <- train_model_under_samp$Fraud
+
+
+lgb.train = lgb.Dataset(data=X_train, label=Y_train)
+View(lgb.train)
+
+lgb.grid = list(objective = "binary",
+                metric = "auc",
+                min_sum_hessian_in_leaf = 1,
+                feature_fraction = 0.7,
+                bagging_fraction = 0.7,
+                bagging_freq = 5,
+                min_data = 100,
+                max_bin = 50,
+                lambda_l1 = 8,
+                lambda_l2 = 1.3,
+                min_data_in_bin=100,
+                min_gain_to_split = 10,
+                min_data_in_leaf = 30,
+                is_unbalance = TRUE)
+
+
+lgb.normalizedgini = function(preds, dtrain){
+  actual = getinfo(dtrain, "label")
+  score  = NormalizedGini(preds,actual)
+  return(list(name = "gini", value = score, higher_better = TRUE))
+}
+
+best.iter = 525
+
+
+lgb.model = lgb.train(params = lgb.grid, data = lgb.train, learning_rate = 0.02,
+                      num_leaves = 25, num_threads = 2 , nrounds = best.iter,
+                      eval_freq = 20, eval = lgb.normalizedgini)
 
 
 
