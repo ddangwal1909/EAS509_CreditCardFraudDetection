@@ -129,32 +129,25 @@ if (input$sel_SalesRep=='Age')
       #  data.frame(change_prev(), above_moving_avg(),above_max(),change_prev_100perc_flag(),change_prev_200perc_flag(),same_merchant_transact(),
      #              above_moving_avg_user_flag(),mcc_risky(),state_risky(),age_risky(),chip_flag(),swipe_flag(),online_flag())
      # })
-      df <- data.frame("change_prev" = 0,
-                       "above_moving_avg" = 0,
-                       "above_max" = 0,
-                       "change_prev_100perc_flag" = 0,
-                       "change_prev_200perc_flag" = 0,
-                       "same_merchant_transact" = 0,
-                       "above_moving_avg_user_flag" = 0,
-                       "mcc_risky" = 0,
-                       "state_risky" = 0,
-                       "age_risky" = 0,
-                       "chip_flag" = 0,
-                       "swipe_flag" = 0,
-                       "online_flag" = 0) 
-      df[nrow(df) + 1,] <- reactive({
-        c(nput$change_prev, input$above_max,input$change_prev_100perc_flag,input$change_prev_200perc_flag,same_merchant_transact,input$above_moving_avg_user_flag,
-          input$mcc_risky,input$state_risky,input$age_risky,ifelse(input$type == 'chip', 1, 0),ifelse(input$type == 'swipe', 1, 0),ifelse(input$type == 'online', 1, 0))
+      
+      df <- data.frame(matrix(ncol = 13, nrow = 0))
+      x <- c("change_prev", "above_moving_avg", "change_prev_100perc_flag","change_prev_200perc_flag","same_merchant_transact","above_moving_avg_user_flag",
+             "mcc_risky","state_risky","age_risky","chip_flag","chip_flag","swipe_flag","online_flag")
+      colnames(df) <- x
+
+      newrow <- reactive({
+        c(as.numeric(input$change_prev),as.integer(input$above_moving_avg), as.integer(input$above_max),as.integer(input$change_prev_100perc_flag),as.integer(input$change_prev_200perc_flag),as.integer(input$same_merchant_transact),as.integer(input$above_moving_avg_user_flag),
+          as.integer(input$mcc_risky),as.integer(input$state_risky),as.integer(input$age_risky),as.integer(ifelse(input$type == 'chip', 1, 0)),as.integer(ifelse(input$type == 'swipe', 1, 0)),as.integer(ifelse(input$type == 'online', 1, 0)))
       })
     modelpred = reactive({
       mpgInput = input$age_risky
-      predict(bstSparse,as.matrix(tail(df(), n = 1)), type = "response")
+      predict(bstSparse,as.matrix(structure(rbind(df, newrow()), .Names = names(df))), type = "response")
     })
   
-    output$pred <- renderUI({
+    output$pred <- renderPrint({
       if(input$predict)
       {
-        df()
+        modelpred()
       }
       })
 }
