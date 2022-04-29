@@ -1,0 +1,17 @@
+Model,MetricType,Metricsampled,MetricUnsampled
+Logistic Regression,Accuracy,88.67,99.96
+Random Forest Classifier,Accuracy,93.50,98.60
+Naïve Bayes,Accuracy,93.44,99.59
+XG-Boost,Accuracy,96.65,99.86
+Logistic Regression,Precision,0.04,0.07
+Random Forest Classifier,Precision,0.06,0.9
+XG-Boost,Precision,0.11,78.82
+Naïve Bayes,Precision,0.09,0.99
+Logistic Regression,Recall,3.24,0
+Random Forest Classifier,Recall,2.65,0.5
+XG-Boost,Recall,2.63,1.95
+Naïve Bayes,Recall,4.43,2.04
+Logistic Regression,F1-Score,0.08,0.00
+Random Forest Classifier,F1-Score,0.11,0.64
+XG-Boost,F1-Score,0.21,3.80
+Naïve Bayes,F1-Score,0.18,1.33
